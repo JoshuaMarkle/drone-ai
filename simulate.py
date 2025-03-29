@@ -20,39 +20,7 @@ target = Target(position=[config.TARGET_START_X, config.TARGET_START_Y])
 # False = AI controls drone
 user_control = True
 
-# Game loop
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        if event.type == pygame.KEYDOWN: # Toggle control mode with [SPACE]
-            if event.key == pygame.K_SPACE:
-                user_control = not user_control
-        if event.type == pygame.MOUSEWHEEL: # Adjust zoom with [MOUSEWHEEL]
-            new_zoom = config.ZOOM + event.y * 5.0
-    
-    left_thrust = 0.0
-    right_thrust = 0.0
-    if user_control: # USER CONTROLS
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            left_thrust = 1.0
-            right_thrust = 1.0
-        if keys[pygame.K_LEFT]:
-            right_thrust = 1.0
-            left_thrust /= 2.0
-        if keys[pygame.K_RIGHT]:
-            left_thrust = 1.0
-            right_thrust /= 2.0
-    else: # NEURAL NETWORK CONTROLS
-        # PLACEHOLDER
-        left_thrust = 0.0
-        right_thrust = 0.0
-
-    # Update drone physics
-    drone.update(config.DT, left_thrust, right_thrust)
-
+def render_simulation(screen, clock, font, drone, target, left_thrust, right_thrust):
     # Draw everything
     screen.fill((255, 255, 255))
     target.draw(screen)
@@ -76,3 +44,39 @@ while True:
     # Wait for next frame
     pygame.display.flip()
     clock.tick(60)
+
+if __name__ == "__main__":
+    # Game loop
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN: # Toggle control mode with [SPACE]
+                if event.key == pygame.K_SPACE:
+                    user_control = not user_control
+            if event.type == pygame.MOUSEWHEEL: # Adjust zoom with [MOUSEWHEEL]
+                new_zoom = config.ZOOM + event.y * 5.0
+        
+        left_thrust = 0.0
+        right_thrust = 0.0
+        if user_control: # USER CONTROLS
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_UP]:
+                left_thrust = 1.0
+                right_thrust = 1.0
+            if keys[pygame.K_LEFT]:
+                right_thrust = 1.0
+                left_thrust /= 2.0
+            if keys[pygame.K_RIGHT]:
+                left_thrust = 1.0
+                right_thrust /= 2.0
+        else: # NEURAL NETWORK CONTROLS
+            # PLACEHOLDER
+            left_thrust = 0.0
+            right_thrust = 0.0
+
+        # Update drone physics
+        drone.update(config.DT, left_thrust, right_thrust)
+
+        render_simulation(screen, clock, font, drone, target, left_thrust, right_thrust)

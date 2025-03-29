@@ -34,7 +34,7 @@ CRITIC_LEARNING_RATE = 1e-4     # learning rate for critic network
 MODEL_SAVE_PATH = "./models/"   # where to save the model
 
 # Training Parameters
-TRAIN_EPISODES = 10000          # each episode is a full trajectory where the AI trys to control
+TRAIN_EPISODES = 100            # each episode is a full trajectory where the AI trys to control
 EPISODE_LENGTH = 10000          # how long each training episode is (longer trajectories)
 DISCOUNT_FACTOR = 0.90          # discount for future rewards, value of 1 means long term value of 0.9-0 is short term goals
 EXPLORATION_NOISE = 0.2         # noise added during exploration of new actions
@@ -47,4 +47,4 @@ TARGET_THRESHOLD = 0.2          # Distance threshold to consider reaching the ta
 TARGET_REWARD = -500.0          # Large reward for reaching the target
 
 # Debugging
-DEBUG_EPISODE_MARKER = TRAIN_EPISODES / 25  # Distance between printed episode markers
+DEBUG_EPISODE_MARKER = 1        # Distance between printed episode markers
