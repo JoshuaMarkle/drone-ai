@@ -38,16 +38,17 @@ CRITIC_LEARNING_RATE = 1e-3     # learning rate for critic network
 MODEL_SAVE_PATH = "./models/"   # where to save the model
 
 # Training Parameters
-TRAIN_EPISODES = 1000           # each episode is a full trajectory
+TRAIN_EPISODES = 5000           # each episode is a full trajectory
 EPISODE_LENGTH = 500            # how long each training episode is (longer trajectories)
 DISCOUNT_FACTOR = 0.99          # discount for future rewards, between 0.99 and 0.9
 EXPLORATION_NOISE = 0.1         # noise added during exploration of new actions
 
 REWARD_CRASH = -1000.0          # Large penalty for crashing
-REWARD_ALIVE = 1.0              # Small reward for staying alive each timestep
+REWARD_ALIVE = 10.0             # Small reward for staying alive each timestep
 REWARD_DISTANCE = 1.0           # Reward/punishment for change of distance between timesteps
-REWARD_TARGET = 100.0           # Large reward for reaching the target
+REWARD_TARGET = 100.00          # Large reward for reaching the target
 TARGET_THRESHOLD = 0.2          # Distance threshold to consider reaching the target
 
 # Debugging
-DEBUG_EPISODE_MARKER = 10       # Distance between printed episode markers
+DEBUG_EPISODE_MARKER = 100      # Distance between printed episode markers
+LOG_PATH = "./logs/log.csv"     # Path to the log file
