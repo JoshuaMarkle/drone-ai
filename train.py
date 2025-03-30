@@ -50,21 +50,34 @@ def train():
         config.ACTOR_LEARNING_RATE
     )
 
+    # Initialize log file
+    with open(config.LOG_PATH, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["episode", "steps", "reward"])
+
+    # Trajectory buffer
+    all_states = []
+    all_actions = []
+    all_log_probs = []
+    all_returns = []
+
     for episode in range(config.TRAIN_EPISODES):
         drone = Drone(position=[config.DRONE_START_X, config.DRONE_START_Y], angle=config.DRONE_START_THETA)
         target = Target(position=[config.TARGET_START_X, config.TARGET_START_Y])
 
-        log_probs = []
-        actions = []
-        states = []
-        rewards = []
-        values = []
+        ep_states = []
+        ep_actions = []
+        ep_log_probs = []
+        ep_rewards = []
+        ep_returns = []
 
         for step in range(config.EPISODE_LENGTH):
             state = normalize_state(drone, target)
             dist = np.linalg.norm(target.position - drone.position)
 
-            value = agent.predict_value(state)
+            with torch.no_grad():
+                value = agent.predict_value(state)
+
             action, log_prob = agent.get_action(state)
 
             left_thrust, right_thrust = action.detach().numpy()
@@ -73,56 +86,62 @@ def train():
             crashed = is_out_of_bounds(drone.position)
             reward = compute_reward(drone, target, dist, crashed)
 
-            # Store experience
-            log_probs.append(log_prob)
-            actions.append(action)
-            states.append(state)
-            values.append(value)
-            rewards.append(reward)
+            ep_states.append(state)
+            ep_actions.append(action)
+            ep_log_probs.append(log_prob.detach())
+            ep_rewards.append(reward)
 
             if crashed or dist < config.TARGET_THRESHOLD:
                 break
 
-        # Compute discounted returns
-        returns = []
-        G = 0
-        for r in reversed(rewards):
+        # Compute TD(1) returns: r + γ * V(s')
+        with torch.no_grad():
+            final_state = normalize_state(drone, target)
+            final_value = agent.predict_value(final_state).item() if not crashed else 0.0
+
+        G = final_value
+        for r in reversed(ep_rewards):
             G = r + config.DISCOUNT_FACTOR * G
-            returns.insert(0, G)
-        returns = torch.tensor(returns, dtype=torch.float32)
+            ep_returns.insert(0, G)
 
-        # Stack tensors
-        states = torch.stack(states)
-        actions = torch.stack(actions)
-        log_probs = torch.stack(log_probs)
-        values = torch.stack(values)
+        # Append to full buffer
+        all_states.extend(ep_states)
+        all_actions.extend(ep_actions)
+        all_log_probs.extend(ep_log_probs)
+        all_returns.extend(ep_returns)
 
-        # Compute advantages and normalize
-        advantages = returns - values.detach()
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        # Trigger update once buffer hits threshold
+        if len(all_states) >= config.BUFFER_CAPACITY or episode == config.TRAIN_EPISODES - 1:
+            # Convert to tensors
+            states = torch.stack(all_states)
+            actions = torch.stack(all_actions)
+            log_probs = torch.stack(all_log_probs)
+            returns = torch.tensor(all_returns, dtype=torch.float32)
+            values = agent.critic(states).detach()
+            advantages = returns - values
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Update networks
-        agent.update(states, actions, log_probs.detach(), advantages)
-        agent.update_critic(states, returns)
+            # Train
+            agent.update(states, actions, log_probs, advantages)
+            agent.update_critic(states, returns)
 
-        # Log this episode's data
+            # Reset buffer
+            all_states.clear()
+            all_actions.clear()
+            all_log_probs.clear()
+            all_returns.clear()
+
+        # Log this episode
         with open(config.LOG_PATH, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([episode, step, sum(rewards)])
+            writer.writerow([episode, step, sum(ep_rewards)])
 
-        # Debug print
         if episode % config.DEBUG_EPISODE_MARKER == 0:
-            print(f"Episode {episode} | Steps: {step} | Reward: {sum(rewards):.2f}")
+            print(f"Episode {episode} | Steps: {step} | Reward: {sum(ep_rewards):.2f}")
 
     # Save model
     os.makedirs(config.MODEL_SAVE_PATH, exist_ok=True)
     torch.save(agent.actor.state_dict(), os.path.join(config.MODEL_SAVE_PATH, "actor.pt"))
     print("Model saved.")
 
-if __name__ == "__main__":
-    # Initialize log file
-    with open(config.LOG_PATH, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["episode", "steps", "reward"])
-
-    train()
+train()
