@@ -1,115 +1,90 @@
-# neural.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import config
 
-class ActorNetwork(nn.Module):
+class PPOActor(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_layers):
         """
-        Build an Actor network that maps states to actions.
-        
+        Build a PPO Actor network that maps states to actions.
+
         Args:
             state_dim (int): Dimensionality of the input state.
             action_dim (int): Dimensionality of the output action.
             hidden_layers (list of int): List with the number of nodes for each hidden layer.
         """
-        super(ActorNetwork, self).__init__()
+        super(PPOActor, self).__init__()
         layers = []
-        input_dim = state_dim
+        input_dim = state_dim  # Correct input size
 
         # Build hidden layers.
         for hidden_dim in hidden_layers:
             layers.append(nn.Linear(input_dim, hidden_dim))
             layers.append(nn.ReLU())
-            input_dim = hidden_dim
+            input_dim = hidden_dim  # Update input_dim for the next layer
 
-        # Final layer maps to action_dim. Using Tanh to bound the actions (e.g., between -1 and 1).
-        layers.append(nn.Linear(input_dim, action_dim))
-        layers.append(nn.Tanh())
-        self.model = nn.Sequential(*layers)
-    
+        # Output layers for action mean and standard deviation
+        self.mean_layer = nn.Linear(input_dim, action_dim)
+        self.std_layer = nn.Linear(input_dim, action_dim)
+
+        self.hidden_layers = nn.Sequential(*layers)
+
     def forward(self, state):
-        return self.model(state)
+        """ Forward pass through the network. """
+        x = self.hidden_layers(state)  # Ensure input shape is correct
+        mean = torch.sigmoid(self.mean_layer(x))  # Ensure output is between 0 and 1
+        std = F.softplus(self.std_layer(x)) + 0.1  # Ensure standard deviation is positive
+        return mean, std
 
-class CriticNetwork(nn.Module):
-    def __init__(self, state_dim, hidden_layers):
+class PPOAgent:
+    def __init__(self, state_dim, action_dim, hidden_layers, learning_rate, clip_epsilon=0.2):
         """
-        Build a Critic network that maps states to a scalar value.
-        
-        Args:
-            state_dim (int): Dimensionality of the input state.
-            hidden_layers (list of int): List with the number of nodes for each hidden layer.
-        """
-        super(CriticNetwork, self).__init__()
-        layers = []
-        input_dim = state_dim
-        for hidden_dim in hidden_layers:
-            layers.append(nn.Linear(input_dim, hidden_dim))
-            layers.append(nn.ReLU())
-            input_dim = hidden_dim
-        layers.append(nn.Linear(input_dim, 1))
-        self.model = nn.Sequential(*layers)
-    
-    def forward(self, state):
-        return self.model(state)
+        Initialize the PPO agent with an Actor network.
 
-class ActorCritic:
-    def __init__(self, state_dim, action_dim, actor_hidden_layers, critic_hidden_layers, actor_lr, critic_lr):
-        """
-        Initialize the Actor-Critic container.
-        
         Args:
             state_dim (int): Dimension of the state vector.
             action_dim (int): Dimension of the action vector.
-            actor_hidden_layers (list of int): Hidden layer sizes for the actor network.
-            critic_hidden_layers (list of int): Hidden layer sizes for the critic network.
-            actor_lr (float): Learning rate for the actor.
-            critic_lr (float): Learning rate for the critic.
+            hidden_layers (list of int): Hidden layer sizes for the actor network.
+            learning_rate (float): Learning rate for the optimizer.
+            clip_epsilon (float): Clipping parameter for PPO.
         """
-        self.actor = ActorNetwork(state_dim, action_dim, actor_hidden_layers)
-        self.critic = CriticNetwork(state_dim, critic_hidden_layers)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
-    
-    def act(self, state):
-        """
-        Given a state, return the action according to the actor network.
-        Here the policy is deterministic.
-        
-        Args:
-            state (torch.Tensor): A tensor representing the state.
-        
-        Returns:
-            torch.Tensor: Action output from the actor.
-        """
-        return self.actor(state)
-    
-    def evaluate(self, state):
-        """
-        Given a state, return the value estimate from the critic network.
-        
-        Args:
-            state (torch.Tensor): A tensor representing the state.
-            
-        Returns:
-            torch.Tensor: Value estimate.
-        """
-        return self.critic(state)
+        self.actor = PPOActor(state_dim, action_dim, hidden_layers)
+        self.optimizer = optim.Adam(self.actor.parameters(), lr=learning_rate)
+        self.clip_epsilon = clip_epsilon
+
+    def get_action(self, state):
+        """ Sample an action based on the policy. """
+        mean, std = self.actor(state)
+        dist = torch.distributions.Normal(mean, std)
+        action = dist.sample().clamp(0, 1)  # Clamp sampled action to [0, 1]
+        log_prob = dist.log_prob(action)
+        return action, log_prob
+
+    def update(self, states, actions, old_log_probs, advantages):
+        """ Perform PPO policy update. """
+        mean, std = self.actor(states)
+        dist = torch.distributions.Normal(mean, std)
+        new_log_probs = dist.log_prob(actions)
+
+        ratio = torch.exp(new_log_probs - old_log_probs)
+        clipped_ratio = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon)
+        loss = -torch.min(ratio * advantages.unsqueeze(-1), clipped_ratio * advantages.unsqueeze(-1)).mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
 if __name__ == "__main__":
-    # Quick test: instantiate the networks using the parameters from config.py.
+    # Quick test: instantiate the PPO agent using the parameters from config.py.
     state_dim = config.STATE_DIM
     action_dim = config.ACTION_DIM
-    actor_hidden_layers = config.ACTOR_HIDDEN_LAYERS
-    critic_hidden_layers = config.CRITIC_HIDDEN_LAYERS
-    actor_lr = config.ACTOR_LEARNING_RATE
-    critic_lr = config.CRITIC_LEARNING_RATE
+    hidden_layers = config.ACTOR_HIDDEN_LAYERS
+    learning_rate = config.ACTOR_LEARNING_RATE
 
-    # Create an ActorCritic instance.
-    ac = ActorCritic(state_dim, action_dim, actor_hidden_layers, critic_hidden_layers, actor_lr, critic_lr)
-    
-    # Print network summaries.
-    print("Actor Network:\n", ac.actor)
-    print("\nCritic Network:\n", ac.critic)
+    # Create a PPOAgent instance.
+    ppo_agent = PPOAgent(state_dim, action_dim, hidden_layers, learning_rate)
+
+    # Print network summary.
+    print("PPO Actor Network:")
+    print(ppo_agent.actor)

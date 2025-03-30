@@ -49,7 +49,10 @@ class Drone:
         self.position += self.velocity * dt
 
     def state(self):
-        """ Return the current state as a dictionary. """
+        """
+        Return the current state as a dictionary. 
+        Will need to be normalized for the neural network later.
+        """
         return {
             "position": self.position.copy(),
             "velocity": self.velocity.copy(),
@@ -65,62 +68,44 @@ class Drone:
         screen_y = config.SCREEN_HEIGHT / 2 - (pos[1] - config.CAMERA_CENTER[1]) * config.ZOOM
         return int(screen_x), int(screen_y)
 
-    def draw(self, surface):
+    def draw(self, surface, left_thrust, right_thrust):
         """
-        Draw the drone as a blue rectangle.
-        The rectangle is defined in the drone's local coordinates (using WING_SPAN and DRONE_HEIGHT),
-        rotated by its current angle and translated by its position.
+        Draw the drone as a blue rectangle and the thrust lines as red lines.
         """
-        # Calculate points for drone body
-        w = config.WING_SPAN
-        h = config.DRONE_HEIGHT
-        local_points = np.array([
-            [-w/2, -h/2],
-            [w/2, -h/2],
-            [w/2, h/2],
-            [-w/2, h/2]
+        w, h = config.WING_SPAN, config.DRONE_HEIGHT
+        cos_a, sin_a = math.cos(self.angle), math.sin(self.angle)
+        rotation_matrix = np.array([
+            [cos_a, -sin_a],
+            [sin_a, cos_a]
         ])
 
-        # Rotate the drone to its angle
-        cos_a = math.cos(self.angle)
-        sin_a = math.sin(self.angle)
-        rotated_points = []
-        for p in local_points:
-            rx = p[0] * cos_a - p[1] * sin_a
-            ry = p[0] * sin_a + p[1] * cos_a
-            rotated_points.append((rx + self.position[0], ry + self.position[1]))
+        def local_to_world(local_point):
+            return self.position + rotation_matrix @ local_point
 
-        # Translate world position to screen position
-        screen_points = [self.world_to_screen(pt) for pt in rotated_points]
+        def draw_line(start, end, color=(255, 0, 0), width=2):
+            pygame.draw.line(surface, color, self.world_to_screen(start), self.world_to_screen(end), width)
 
-        # Draw the drone to the screen
-        pygame.draw.polygon(surface, (0, 0, 255), screen_points)
+        # Drone body
+        local_corners = np.array([
+            [-w/2, -h/2],
+            [ w/2, -h/2],
+            [ w/2,  h/2],
+            [-w/2,  h/2]
+        ])
+        world_corners = [local_to_world(p) for p in local_corners]
+        screen_corners = [self.world_to_screen(p) for p in world_corners]
+        pygame.draw.polygon(surface, (0, 0, 255), screen_corners)
 
-    def draw_thrust(self, surface, left_thrust, right_thrust):
-        """
-        Visualize the thrust applied at each wing as red lines.
-        Thrust is drawn in the direction of the applied force.
-        Expect left and right thrust to be from 0 to 1
-        """
-        # Local positions of the wings:
-        left_wing_local = np.array([-config.WING_SPAN/2, 0])
-        right_wing_local = np.array([config.WING_SPAN/2, 0])
-        cos_a = math.cos(self.angle)
-        sin_a = math.sin(self.angle)
-        def local_to_world(local):
-            x = local[0]*cos_a - local[1]*sin_a
-            y = local[0]*sin_a + local[1]*cos_a
-            return np.array([x, y]) + self.position
-
-        left_wing_world = local_to_world(left_wing_local)
-        right_wing_world = local_to_world(right_wing_local)
-
-        # Find thrust angle and calculate end points
+        # Thruster lines
+        wing_offset = w / 2
         thrust_dir = -np.array([math.sin(self.angle), -math.cos(self.angle)])
-        vis_scale = config.WING_SPAN / 4 # Scaling factor for visualization
-        left_end = left_wing_world + thrust_dir * left_thrust * vis_scale
-        right_end = right_wing_world + thrust_dir * right_thrust * vis_scale
+        scale = w / 4
+        wings = {
+            'left': (-wing_offset, left_thrust),
+            'right': (wing_offset, right_thrust)
+        }
 
-        # Draw thrusters
-        pygame.draw.line(surface, (255, 0, 0), self.world_to_screen(left_wing_world), self.world_to_screen(left_end), 2)
-        pygame.draw.line(surface, (255, 0, 0), self.world_to_screen(right_wing_world), self.world_to_screen(right_end), 2)
+        for _, (x_offset, thrust) in wings.items():
+            wing_pos = local_to_world(np.array([x_offset, 0]))
+            end_pos = wing_pos + thrust_dir * thrust * scale
+            draw_line(wing_pos, end_pos)

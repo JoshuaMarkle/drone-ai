@@ -19,13 +19,11 @@ target = Target(position=[config.TARGET_START_X, config.TARGET_START_Y])
 # True = user controls drone
 # False = AI controls drone
 user_control = True
-
-def render_simulation(screen, clock, font, drone, target, left_thrust, right_thrust):
+def render_simulation(screen, clock, font, drone, target, left_thrust, right_thrust, training_info=None):
     # Draw everything
     screen.fill((255, 255, 255))
     target.draw(screen)
-    drone.draw(screen)
-    drone.draw_thrust(screen, left_thrust, right_thrust)
+    drone.draw(screen, left_thrust, right_thrust)
 
     # Draw debugging info
     state = drone.state()
@@ -33,8 +31,18 @@ def render_simulation(screen, clock, font, drone, target, left_thrust, right_thr
         f"x: {state['position'][0]:.2f}  y: {state['position'][1]:.2f}",
         f"vx: {state['velocity'][0]:.2f}  vy: {state['velocity'][1]:.2f}",
         f"θ: {state['angle']:.2f}  ω: {state['angular_velocity']:.2f}",
-        f"thrust l: {left_thrust:.2f}  r: {right_thrust:.2f}"
+        f"thrust l: {left_thrust * config.MAX_THRUST:.2f}  r: {right_thrust * config.MAX_THRUST:.2f}"
     ]
+
+    if training_info:
+        training_lines = [
+            f"episode: {training_info['episode']}",
+            f"reward: {training_info['reward']:.2f}",
+            f"distance: {training_info['distance']:.2f}",
+            f"mode: {training_info['mode']}"
+        ]
+        lines.extend(training_lines)
+
     y_offset = 10
     for line in lines:
         debug_surface = font.render(line, True, (0, 0, 0))
