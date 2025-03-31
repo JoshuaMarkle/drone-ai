@@ -10,6 +10,9 @@ import config
 import numpy as np
 import csv
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Running on:", device)
+
 def normalize_state(drone, target):
     dx, dy = target.position - drone.position
     vx, vy = drone.velocity
@@ -21,9 +24,9 @@ def normalize_state(drone, target):
         dy / config.MAX_DISTANCE,
         vx / config.MAX_SPEED,
         vy / config.MAX_SPEED,
-        theta % (2 * math.pi) / (2 * math.pi),
+        theta / (2 * math.pi),
         omega / config.MAX_OMEGA
-    ], dtype=torch.float32)
+    ], dtype=torch.float32, device=device)
 
 def compute_reward(drone, target, prev_dist, crashed):
     if crashed:
@@ -80,7 +83,7 @@ def train():
 
             action, log_prob = agent.get_action(state)
 
-            left_thrust, right_thrust = action.detach().numpy()
+            left_thrust, right_thrust = action.detach().cpu().numpy()
             drone.update(config.DT, left_thrust, right_thrust)
 
             crashed = is_out_of_bounds(drone.position)
@@ -116,7 +119,7 @@ def train():
             states = torch.stack(all_states)
             actions = torch.stack(all_actions)
             log_probs = torch.stack(all_log_probs)
-            returns = torch.tensor(all_returns, dtype=torch.float32)
+            returns = torch.tensor(all_returns, dtype=torch.float32, device=device)
             values = agent.critic(states).detach()
             advantages = returns - values
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -130,6 +133,9 @@ def train():
             all_actions.clear()
             all_log_probs.clear()
             all_returns.clear()
+
+        # MIGHT DELETE: Make it less and less likely to explore
+        agent.entropy_coeff = max(0.01 * (1 - episode / config.TRAIN_EPISODES), 0.001)
 
         # Log this episode
         with open(config.LOG_PATH, mode='a', newline='') as file:

@@ -6,6 +6,9 @@ from torch.distributions import Normal
 import config
 import random
 
+# Device selection
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class PPOActor(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_layers):
         super(PPOActor, self).__init__()
@@ -23,8 +26,8 @@ class PPOActor(nn.Module):
 
     def forward(self, state):
         x = self.hidden_layers(state)
-        mean = torch.sigmoid(self.mean_layer(x))               # Output thrusts in [0, 1]
-        std = F.softplus(self.std_layer(x)) + 0.1              # Positive std deviation
+        mean = torch.sigmoid(self.mean_layer(x))    # Output in [0, 1]
+        std = F.softplus(self.std_layer(x)) + 0.1   # Positive std
         return mean, std
 
 class PPOCritic(nn.Module):
@@ -38,7 +41,7 @@ class PPOCritic(nn.Module):
             layers.append(nn.ReLU())
             input_dim = hidden_dim
 
-        layers.append(nn.Linear(input_dim, 1))  # Value output
+        layers.append(nn.Linear(input_dim, 1))
         self.model = nn.Sequential(*layers)
 
     def forward(self, state):
@@ -46,8 +49,8 @@ class PPOCritic(nn.Module):
 
 class PPOAgent:
     def __init__(self, state_dim, action_dim, hidden_layers, learning_rate, clip_epsilon=config.PPO_CLIP_EPSILON):
-        self.actor = PPOActor(state_dim, action_dim, hidden_layers)
-        self.critic = PPOCritic(state_dim, config.CRITIC_HIDDEN_LAYERS)
+        self.actor = PPOActor(state_dim, action_dim, hidden_layers).to(device)
+        self.critic = PPOCritic(state_dim, config.CRITIC_HIDDEN_LAYERS).to(device)
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=learning_rate)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=config.CRITIC_LEARNING_RATE)
@@ -57,6 +60,7 @@ class PPOAgent:
         self.max_grad_norm = config.MAX_GRAD_NORM
 
     def get_action(self, state):
+        state = state.to(device)
         mean, std = self.actor(state)
         dist = Normal(mean, std)
         action = dist.sample().clamp(0, 1)
@@ -64,16 +68,20 @@ class PPOAgent:
         return action, log_prob
 
     def predict_value(self, state):
-        return self.critic(state)
+        return self.critic(state.to(device))
 
     def update(self, states, actions, old_log_probs, advantages):
+        states = states.to(device)
+        actions = actions.to(device)
+        old_log_probs = old_log_probs.to(device)
+        advantages = advantages.to(device)
+
         for _ in range(config.PPO_EPOCHS):
             indices = list(range(len(states)))
             random.shuffle(indices)
 
             for i in range(0, len(indices), config.MINIBATCH_SIZE):
                 batch_idx = indices[i:i + config.MINIBATCH_SIZE]
-
                 batch_states = states[batch_idx]
                 batch_actions = actions[batch_idx]
                 batch_old_log_probs = old_log_probs[batch_idx]
@@ -96,6 +104,9 @@ class PPOAgent:
                 self.actor_optimizer.step()
 
     def update_critic(self, states, returns):
+        states = states.to(device)
+        returns = returns.to(device)
+
         for _ in range(config.PPO_EPOCHS):
             indices = list(range(len(states)))
             random.shuffle(indices)

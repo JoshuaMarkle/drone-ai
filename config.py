@@ -39,13 +39,13 @@ MODEL_SAVE_PATH = "./models/"   # where to save the model
 
 PPO_EPOCHS = 5                  # Number of times to reuse buffer per update
 MINIBATCH_SIZE = 64             # Minibatch size for actor & critic updates
-PPO_CLIP_EPSILON = 0.1          # Clipping parameter for ratio
+PPO_CLIP_EPSILON = 0.05         # Clipping parameter for ratio
 ENTROPY_COEFF = 0.01            # Weight for entropy regularization
 MAX_GRAD_NORM = 0.5             # Gradient clipping max norm
 BUFFER_CAPACITY = 4096          # Number of transitions to collect before update
 
 # Training Parameters
-TRAIN_EPISODES = 2000           # each episode is a full trajectory
+TRAIN_EPISODES = 5000           # each episode is a full trajectory
 EPISODE_LENGTH = 500            # how long each training episode is (longer trajectories)
 DISCOUNT_FACTOR = 0.99          # discount for future rewards, between 0.99 and 0.9
 EXPLORATION_NOISE = 0.05        # noise added during exploration of new actions
