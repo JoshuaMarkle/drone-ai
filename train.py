@@ -21,7 +21,7 @@ def normalize_state(drone, target):
         dy / config.MAX_DISTANCE,
         vx / config.MAX_SPEED,
         vy / config.MAX_SPEED,
-        theta / (2 * math.pi),
+        theta % (2 * math.pi) / (2 * math.pi),
         omega / config.MAX_OMEGA
     ], dtype=torch.float32)
 
@@ -91,7 +91,7 @@ def train():
             ep_log_probs.append(log_prob.detach())
             ep_rewards.append(reward)
 
-            if crashed or dist < config.TARGET_THRESHOLD:
+            if crashed:
                 break
 
         # Compute TD(1) returns: r + γ * V(s')

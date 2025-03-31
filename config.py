@@ -31,31 +31,31 @@ DT = 0.01                       # Change in time between steps
 # Neural Network
 STATE_DIM = 6                   # [dist_x, dist_y, vx, vy, theta, omega]
 ACTION_DIM = 2                  # left & right thrust (between 0-1)
-ACTOR_HIDDEN_LAYERS = [64, 64]  # Two hidden layers with 64 neurons each for the actor
-CRITIC_HIDDEN_LAYERS = [64, 64] # Two hidden layers with 64 neurons each for the critic
-ACTOR_LEARNING_RATE = 1e-3      # learning rate for actor network
-CRITIC_LEARNING_RATE = 1e-3     # learning rate for critic network
+ACTOR_HIDDEN_LAYERS = [128, 128]    # Two hidden layers with 64 neurons each for the actor
+CRITIC_HIDDEN_LAYERS = [128, 128]   # Two hidden layers with 64 neurons each for the critic
+ACTOR_LEARNING_RATE = 1e-4      # learning rate for actor network
+CRITIC_LEARNING_RATE = 1e-4     # learning rate for critic network
 MODEL_SAVE_PATH = "./models/"   # where to save the model
 
-PPO_EPOCHS = 10                 # Number of times to reuse buffer per update
-MINIBATCH_SIZE = 32             # Minibatch size for actor & critic updates
-PPO_CLIP_EPSILON = 0.2          # Clipping parameter for ratio
+PPO_EPOCHS = 5                  # Number of times to reuse buffer per update
+MINIBATCH_SIZE = 64             # Minibatch size for actor & critic updates
+PPO_CLIP_EPSILON = 0.1          # Clipping parameter for ratio
 ENTROPY_COEFF = 0.01            # Weight for entropy regularization
 MAX_GRAD_NORM = 0.5             # Gradient clipping max norm
-BUFFER_CAPACITY = 1024          # Number of transitions to collect before update
+BUFFER_CAPACITY = 4096          # Number of transitions to collect before update
 
 # Training Parameters
-TRAIN_EPISODES = 100            # each episode is a full trajectory
+TRAIN_EPISODES = 2000           # each episode is a full trajectory
 EPISODE_LENGTH = 500            # how long each training episode is (longer trajectories)
 DISCOUNT_FACTOR = 0.99          # discount for future rewards, between 0.99 and 0.9
-EXPLORATION_NOISE = 0.1         # noise added during exploration of new actions
+EXPLORATION_NOISE = 0.05        # noise added during exploration of new actions
 
-REWARD_CRASH = -1000.0          # Large penalty for crashing
-REWARD_ALIVE = 10.0             # Small reward for staying alive each timestep
+REWARD_CRASH = -100.0           # Large penalty for crashing
+REWARD_ALIVE = 1.0              # Small reward for staying alive each timestep
 REWARD_DISTANCE = 1.0           # Reward/punishment for change of distance between timesteps
-REWARD_TARGET = 100.00          # Large reward for reaching the target
+REWARD_TARGET = 20.0            # Large reward for reaching the target
 TARGET_THRESHOLD = 0.2          # Distance threshold to consider reaching the target
 
 # Debugging
-DEBUG_EPISODE_MARKER = 1        # Distance between printed episode markers
+DEBUG_EPISODE_MARKER = 50       # Distance between printed episode markers
 LOG_PATH = "./logs/log.csv"     # Path to the log file
