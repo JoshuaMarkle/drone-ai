@@ -3,12 +3,14 @@
 import torch
 import math
 import os
+import shutil
 from drone import Drone
 from target import Target
 from neural import PPOAgent
 import config
 import numpy as np
 import csv
+from torch.utils.tensorboard import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Running on:", device)
@@ -36,6 +38,10 @@ def compute_reward(drone, target, prev_dist, crashed):
     reward = config.REWARD_ALIVE
     reward += config.REWARD_DISTANCE * (prev_dist - dist)
 
+    # Normalize angle to [-pi, pi]
+    angle = ((drone.angle + math.pi) % (2 * math.pi)) - math.pi
+    reward += config.REWARD_ANGLE * (1 - abs(angle) / math.pi)
+
     if dist < config.TARGET_THRESHOLD:
         reward += config.REWARD_TARGET
 
@@ -46,6 +52,13 @@ def is_out_of_bounds(pos):
     return x < -2 or x > 4 or y < -2 or y > 4
 
 def train():
+    if os.path.exists(config.CHECKPOINT_PATH):
+        shutil.rmtree(config.CHECKPOINT_PATH)
+    os.makedirs(config.CHECKPOINT_PATH, exist_ok=True)
+    os.makedirs(config.MODEL_SAVE_PATH, exist_ok=True)
+
+    writer = SummaryWriter()
+
     agent = PPOAgent(
         config.STATE_DIM,
         config.ACTION_DIM,
@@ -53,12 +66,11 @@ def train():
         config.ACTOR_LEARNING_RATE
     )
 
-    # Initialize log file
+    # CSV log setup
     with open(config.LOG_PATH, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["episode", "steps", "reward"])
+        writer_csv = csv.writer(file)
+        writer_csv.writerow(["episode", "steps", "reward", "critic_start"])
 
-    # Trajectory buffer
     all_states = []
     all_actions = []
     all_log_probs = []
@@ -79,10 +91,9 @@ def train():
             dist = np.linalg.norm(target.position - drone.position)
 
             with torch.no_grad():
-                value = agent.predict_value(state)
+                _ = agent.predict_value(state)
 
             action, log_prob = agent.get_action(state)
-
             left_thrust, right_thrust = action.detach().cpu().numpy()
             drone.update(config.DT, left_thrust, right_thrust)
 
@@ -97,7 +108,6 @@ def train():
             if crashed:
                 break
 
-        # Compute TD(1) returns: r + γ * V(s')
         with torch.no_grad():
             final_state = normalize_state(drone, target)
             final_value = agent.predict_value(final_state).item() if not crashed else 0.0
@@ -107,15 +117,15 @@ def train():
             G = r + config.DISCOUNT_FACTOR * G
             ep_returns.insert(0, G)
 
-        # Append to full buffer
+        with torch.no_grad():
+            start_value = agent.predict_value(ep_states[0]).item()
+
         all_states.extend(ep_states)
         all_actions.extend(ep_actions)
         all_log_probs.extend(ep_log_probs)
         all_returns.extend(ep_returns)
 
-        # Trigger update once buffer hits threshold
         if len(all_states) >= config.BUFFER_CAPACITY or episode == config.TRAIN_EPISODES - 1:
-            # Convert to tensors
             states = torch.stack(all_states)
             actions = torch.stack(all_actions)
             log_probs = torch.stack(all_log_probs)
@@ -124,30 +134,35 @@ def train():
             advantages = returns - values
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-            # Train
             agent.update(states, actions, log_probs, advantages)
             agent.update_critic(states, returns)
 
-            # Reset buffer
             all_states.clear()
             all_actions.clear()
             all_log_probs.clear()
             all_returns.clear()
 
-        # MIGHT DELETE: Make it less and less likely to explore
-        agent.entropy_coeff = max(0.01 * (1 - episode / config.TRAIN_EPISODES), 0.001)
+        ep_reward = sum(ep_rewards)
 
-        # Log this episode
+        # TensorBoard: only log 3 selected metrics
+        writer.add_scalar("Reward/Total", ep_reward, episode)
+        writer.add_scalar("Episode/Steps", step, episode)
+        writer.add_scalar("Critic/StartValue", start_value, episode)
+
+        # CSV: log only selected values
         with open(config.LOG_PATH, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([episode, step, sum(ep_rewards)])
+            writer_csv = csv.writer(file)
+            writer_csv.writerow([episode, step, ep_reward, start_value])
 
         if episode % config.DEBUG_EPISODE_MARKER == 0:
-            print(f"Episode {episode} | Steps: {step} | Reward: {sum(ep_rewards):.2f}")
+            print(f"Ep {episode} | Steps: {step} | Reward: {ep_reward:.2f} | Critic Start: {start_value:.2f}")
 
-    # Save model
-    os.makedirs(config.MODEL_SAVE_PATH, exist_ok=True)
+        if config.CHECKPOINT_MARKER > 0 and episode % config.CHECKPOINT_MARKER == 0 and episode > 0:
+            checkpoint_path = os.path.join(config.CHECKPOINT_PATH, f"actor_ep{episode}.pt")
+            torch.save(agent.actor.state_dict(), checkpoint_path)
+
     torch.save(agent.actor.state_dict(), os.path.join(config.MODEL_SAVE_PATH, "actor.pt"))
     print("Model saved.")
+    writer.close()
 
 train()

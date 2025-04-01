@@ -1,4 +1,7 @@
 __pycache__/
+models/
+runs/
+logs/
 temp/
 
 Makefile
