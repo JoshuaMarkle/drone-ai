@@ -20,7 +20,7 @@ target = Target(position=[config.TARGET_START_X, config.TARGET_START_Y])
 
 # --- Load Trained Model ---
 actor = PPOActor(config.STATE_DIM, config.ACTION_DIM, config.ACTOR_HIDDEN_LAYERS)
-actor.load_state_dict(torch.load(config.MODEL_SAVE_PATH + "actor.pt"))  
+actor.load_state_dict(torch.load(config.CHECKPOINT_PATH + "actor_ep3000.pt"))
 actor.eval()
 
 # --- Normalize State ---

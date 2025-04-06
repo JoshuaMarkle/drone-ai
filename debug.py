@@ -2,53 +2,53 @@
 
 import matplotlib.pyplot as plt
 import csv
-import numpy as np
-import config
+from collections import defaultdict
 
-episodes = []
-rewards = []
-steps = []
+STEP_LOG_PATH = "./logs/step_rewards.csv"
 
-with open(config.LOG_PATH, mode='r') as file:
-    reader = csv.DictReader(file)
-    for row in reader:
-        episodes.append(int(row["episode"]))
-        steps.append(int(row["steps"]))
-        rewards.append(float(row["reward"]))
+def plot_detailed_step_rewards():
+    dist_data = defaultdict(list)
+    angle_data = defaultdict(list)
+    total_data = defaultdict(list)
 
-episodes_np = np.array(episodes)
-rewards_np = np.array(rewards)
-steps_np = np.array(steps)
+    with open(STEP_LOG_PATH, mode='r') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            episode = int(row["episode"])
+            step = int(row["step"])
+            dist_reward = float(row["dist_reward"])
+            angle_reward = float(row["angle_reward"])
+            total_reward = float(row["total_reward"])
 
-# Fit lines of best fit (degree 1 polynomial = line)
-reward_fit = np.polyfit(episodes_np, rewards_np, 1)
-reward_trend = np.poly1d(reward_fit)
+            dist_data[episode].append((step, dist_reward))
+            angle_data[episode].append((step, angle_reward))
+            total_data[episode].append((step, total_reward))
 
-step_fit = np.polyfit(episodes_np, steps_np, 1)
-step_trend = np.poly1d(step_fit)
+    fig, axs = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
 
-# Print equations
-print(f"Reward trend line: y = {reward_fit[0]:.4f}x + {reward_fit[1]:.2f}")
-print(f"Steps trend line: y = {step_fit[0]:.4f}x + {step_fit[1]:.2f}")
+    for episode in sorted(total_data.keys()):
+        color = plt.cm.viridis(episode / max(total_data.keys()))
+        # Distance Reward
+        steps, rewards = zip(*sorted(dist_data[episode]))
+        axs[0].plot(steps, rewards, label=f"Ep {episode}", color=color)
+        # Angle Reward
+        steps, rewards = zip(*sorted(angle_data[episode]))
+        axs[1].plot(steps, rewards, color=color)
+        # Total Reward
+        steps, rewards = zip(*sorted(total_data[episode]))
+        axs[2].plot(steps, rewards, color=color)
 
-# Plot Rewards
-plt.figure()
-plt.plot(episodes, rewards, label="Episode Reward")
-plt.plot(episodes, reward_trend(episodes_np), 'r--', label=f"Best Fit: y={reward_fit[0]:.2f}x+{reward_fit[1]:.2f}")
-plt.xlabel("Episode")
-plt.ylabel("Total Reward")
-plt.title("Reward over Episodes")
-plt.grid(True)
-plt.legend()
-plt.show()
+    axs[0].set_title("Distance Reward vs Step")
+    axs[1].set_title("Angle Reward vs Step")
+    axs[2].set_title("Total Reward vs Step")
+    axs[2].set_xlabel("Step")
 
-# Plot Steps
-# plt.figure()
-# plt.plot(episodes, steps, label="Steps Survived", color='orange')
-# plt.plot(episodes, step_trend(episodes_np), 'r--', label=f"Best Fit: y={step_fit[0]:.2f}x+{step_fit[1]:.2f}")
-# plt.xlabel("Episode")
-# plt.ylabel("Steps")
-# plt.title("Steps Survived over Episodes")
-# plt.grid(True)
-# plt.legend()
-# plt.show()
+    for ax in axs:
+        ax.grid(True)
+        ax.set_ylabel("Reward")
+
+    axs[0].legend(loc='upper right', fontsize='small', ncol=2)
+    plt.tight_layout()
+    plt.show()
+
+plot_detailed_step_rewards()

@@ -13,7 +13,7 @@ import csv
 from torch.utils.tensorboard import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Running on:", device)
+print("Training on device:", device)
 
 def normalize_state(drone, target):
     dx, dy = target.position - drone.position
@@ -31,19 +31,25 @@ def normalize_state(drone, target):
     ], dtype=torch.float32, device=device)
 
 def compute_reward(drone, target, prev_dist, crashed):
-    if crashed:
-        return config.REWARD_CRASH
+    # Reward for staying alive
+    reward = 0
+    reward += config.REWARD_ALIVE
 
+    # Reward for getting closer to the target
     dist = np.linalg.norm(target.position - drone.position)
-    reward = config.REWARD_ALIVE
     reward += config.REWARD_DISTANCE * (prev_dist - dist)
 
-    # Normalize angle to [-pi, pi]
+    # Normalize angle to [-pi, pi] (reward max: upright and -max: upsidedown)
     angle = ((drone.angle + math.pi) % (2 * math.pi)) - math.pi
-    reward += config.REWARD_ANGLE * (1 - abs(angle) / math.pi)
+    reward += config.REWARD_ANGLE * math.cos(angle)
 
+    # If the drone is on the target, add another additional reward
     if dist < config.TARGET_THRESHOLD:
         reward += config.REWARD_TARGET
+
+    # If the drone crashed, give a penalty
+    if crashed:
+        reward += config.REWARD_CRASH
 
     return reward
 
@@ -55,7 +61,7 @@ def train():
     if os.path.exists(config.CHECKPOINT_PATH):
         shutil.rmtree(config.CHECKPOINT_PATH)
     os.makedirs(config.CHECKPOINT_PATH, exist_ok=True)
-    os.makedirs(config.MODEL_SAVE_PATH, exist_ok=True)
+    os.makedirs(config.MODEL_PATH, exist_ok=True)
 
     writer = SummaryWriter()
 
@@ -67,9 +73,14 @@ def train():
     )
 
     # CSV log setup
-    with open(config.LOG_PATH, mode='w', newline='') as file:
-        writer_csv = csv.writer(file)
-        writer_csv.writerow(["episode", "steps", "reward", "critic_start"])
+    # with open(config.LOG_PATH, mode='w', newline='') as file:
+    #     writer_csv = csv.writer(file)
+    #     writer_csv.writerow(["episode", "steps", "reward", "critic_start"])
+
+    # Log reward over the course of the episode
+    with open(config.STEP_LOG_PATH, mode='w', newline='') as f:
+        writer_step = csv.writer(f)
+        writer_step.writerow(["episode", "step", "dist_reward", "angle_reward", "total_reward"])
 
     all_states = []
     all_actions = []
@@ -104,6 +115,18 @@ def train():
             ep_actions.append(action)
             ep_log_probs.append(log_prob.detach())
             ep_rewards.append(reward)
+
+            # Log reward over episode to CSV file (every checkpoint marker amount of episodes)
+            if config.EPISODE_MARKER > 0 and episode % config.EPISODE_MARKER == 0 and episode > 0:
+                with open(config.STEP_LOG_PATH, mode='a', newline='') as f:
+                    writer_step = csv.writer(f)
+
+                    angle = ((drone.angle + math.pi) % (2 * math.pi)) - math.pi
+                    prev_dist = np.linalg.norm(target.position - drone.position)
+                    angle_reward = config.REWARD_ANGLE * math.cos(angle)
+                    dist_reward = config.REWARD_DISTANCE * (prev_dist - dist)
+
+                    writer_step.writerow([episode, step, dist_reward, angle_reward, reward])
 
             if crashed:
                 break
@@ -150,12 +173,12 @@ def train():
         writer.add_scalar("Critic/StartValue", start_value, episode)
 
         # CSV: log only selected values
-        with open(config.LOG_PATH, mode='a', newline='') as file:
-            writer_csv = csv.writer(file)
-            writer_csv.writerow([episode, step, ep_reward, start_value])
+        # with open(config.LOG_PATH, mode='a', newline='') as file:
+        #     writer_csv = csv.writer(file)
+        #     writer_csv.writerow([episode, step, ep_reward, start_value])
 
         if episode % config.DEBUG_EPISODE_MARKER == 0:
-            print(f"Ep {episode} | Steps: {step} | Reward: {ep_reward:.2f} | Critic Start: {start_value:.2f}")
+            print(f"Ep {episode} | Steps: {step} | Reward: {ep_reward:.2f}")
 
         if config.CHECKPOINT_MARKER > 0 and episode % config.CHECKPOINT_MARKER == 0 and episode > 0:
             checkpoint_path = os.path.join(config.CHECKPOINT_PATH, f"actor_ep{episode}.pt")
