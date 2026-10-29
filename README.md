@@ -1,5 +1,7 @@
 # 🚁 Drone Stabilization AI  
 
+![Drone flight path to target](promo/promo_1_flight_path.png)
+
 This project is a **physics-based simulation** where a drone learns to **stabilize itself** using **reinforcement learning**. It employs an **Actor-Critic neural network** to make real-time stabilization decisions, adapting to dynamic conditions through trial and error.
 
 ## 🚀 Features  
